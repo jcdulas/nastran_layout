@@ -28,7 +28,7 @@ doubt, the spec wins over this file, and this file over habit.
 
 1. **Pure Python.** One `py3-none-any` wheel. No compiled code in this repository; the heavy work goes to the compiled
    code that exists (the topology queries of `nastran_rw`, the sparse graphs of SciPy, NumPy). Dependencies:
-   `nastran_rw`, NumPy, SciPy, pyarrow (the file format, SPEC §3.8). Adding any other dependency is the owner's
+   `nastran_rw`, NumPy, SciPy, pyarrow (the storage, SPEC §3.8). Adding any other dependency is the owner's
    decision.
 2. **`nastran_rw` through its public API only.** `import nastran_rw as nr` and use what its `__init__` exports and its
    data contract documents; never `nastran_rw._core`, never a private name, never parse a deck here. A need it does not
@@ -43,7 +43,7 @@ doubt, the spec wins over this file, and this file over habit.
    laminate is never stored in it, and a change of one never makes a mapping stale. The recipes of the calculation
    points are data; they are never executed here.
 6. **The schema is a contract.** Any change of a table, a column, its type or its meaning increments the schema version,
-   updates `tests/schema_contract.json` and the schema reference of the docs, and keeps the reading of the files of the
+   updates `tests/schema_contract.json` and the schema reference of the docs, and keeps the reading of the layouts of the
    previous version (SPEC §3.8, §7).
 7. **Every change of a built layout goes through an edit operation** (SPEC §3.7): validated, journalled, undoable. No
    public setter, no public mutable table bypasses them.
@@ -104,7 +104,7 @@ nastran_layout/
 │   ├── infer/                a layout from the mesh, the rules (SPEC §3.5)
 │   ├── check/                the checks of level 1, level 2, tables against mesh (SPEC §3.6)
 │   ├── edit/                 operations, journal, undo, replay, geometry for an editor (SPEC §3.7)
-│   └── io/                   the layout file, the tables in and out (SPEC §3.8)
+│   └── io/                   the layout folder, the tables in and out (SPEC §3.8)
 ├── tests/
 │   ├── support/              builders of a stiffened barrel and a wing box in 1D, 2D and mixed fidelity
 │   ├── schema_contract.json  the schema as the tests check it

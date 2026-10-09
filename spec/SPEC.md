@@ -49,7 +49,7 @@ The packages split the work:
 - **`nastran_rw` through its public API and data contract only** (its companion-packages.md §1): never `_core`, never a
   private name, never a deck parsed here.
 - **Dependencies**: `nastran_rw` (a declared range of data contract versions, checked at import), NumPy, SciPy, pyarrow
-  (the file format, section 3.8). No import of `nastran_ssa`, `nastran_smear`, `nastran_lcs` or `nastran_sv`: they read
+  (the storage, section 3.8). No import of `nastran_ssa`, `nastran_smear`, `nastran_lcs` or `nastran_sv`: they read
   the layout, not the reverse. No GUI dependency.
 - **Everything is written in English.** **No test lasts more than one second**; longer checks are benchmarks.
 - **Platforms**: Windows x64 and Linux x64, CPython 3.12 and later.
@@ -150,7 +150,7 @@ consumers through `nastran_rw` (MSC results) or `nastran_sv` (results and sensit
 
 | Representation | Recipe | What it gives |
 |---|---|---|
-| pocket | `average`: the skin shells of the pocket, `area` weights, the stacks summed, the frame of the point | Nx, Ny, Nxy, Mx, My, Mxy, Qx, Qy in the pocket frame |
+| pocket | `average`: the skin shells of the pocket with their weights (the area of each shell over the area of the pocket, the shells stacked on the same grid points counted once in that area: a skin and its doubler, a skin and a foot add their fluxes), summed; the frame of the point | Nx, Ny, Nxy, Mx, My, Mxy, Qx, Qy in the pocket frame |
 | edge `1d` | `element_end`: the element at the point and its end (or its station x/L for a CBEAM), the vector from the element axis to the reference point of the member | the forces of the bar, moved to the reference point, in the member frame |
 | edge `2d` | `cut`: the grid points of the member on the line of grid points nearest the point (the actual position stored), the elements of the member on one side, the reference point, the member frame; and one such cut per segment | the resultants N, V1, V2, T, M1, M2 of the member; the loads of each segment |
 | edge `mixed` | `cut` over the bars and the shells of the member | the same |
@@ -165,11 +165,12 @@ the arguments of the calls that execute them (`nastran_rw`'s `read_block(element
 ### 3.4 Building a layout from tables
 
 The user gives tables (CSV, Parquet, or DataFrames), each with its columns as in section 3.1: `stations`, `surfaces`,
-`members` (the reference line as a polyline, or as an ordered list of elements or grid points of the model),
-`member_segments`, `groups`, `calc_points` (additions and changes). The package derives what the tables leave out: the
-nodes (the crossings of the reference lines within a tolerance), the edges, the pockets (the regions of each surface
-the edges close), their frames, dimensions and curvatures, the default points. The mapping to a model is then made
-(section 3.5, step 3).
+`members` (the reference line as a polyline, or as an ordered list of elements or grid points of a model),
+`member_segments`, `groups`, `calc_points` (additions and changes). A member given by elements or grid points is turned
+into a polyline from the positions of that model, so that level 1 stays independent of it; the elements also seed its
+mapping to that model. The package derives what the tables leave out: the nodes (the crossings of the reference lines
+within a tolerance), the edges, the pockets (the regions of each surface the edges close), their frames, dimensions and
+curvatures, the default points. The mapping to a model is then made (section 3.5, step 3).
 
 ### 3.5 Inferring a layout from the mesh
 
@@ -229,16 +230,19 @@ is reported, never skipped silently. The entities that edits made or changed hav
   calculation points with their frames, and the elements of the model (through `nastran_rw`);
 - the picking: element ID → entities, entity → elements;
 - the provenance and the diagnostics of each entity, for its colours;
-- the operations and the journal above. The editor never writes the layout file itself.
+- the operations and the journal above. The editor never writes the layout folder itself.
 
-### 3.8 File format and schema
+### 3.8 Storage and schema
 
-A layout is saved as **one file** (`.layout`, a zip archive): a `manifest.json` (the schema version, the units, the
-reference axis, the mappings with their model labels and revision stamps, the rules of the inference) and one Parquet
-file per table of sections 3.1 to 3.3, the journal included. The **schema** (the tables, their columns, their types,
-their meaning) is the contract with the consumers: it is versioned, documented, recorded in a
-`tests/schema_contract.json` checked by the tests, and a change of it increments the schema version (as the data
-contract of `nastran_rw`). A consumer may read the file with pyarrow alone, without this package.
+A layout is saved as **one folder** (decision of 2026-10-09): a `manifest.json` (the schema version, the units, the
+reference axis, the list of the mappings with their model labels and revision stamps, the rules of the inference) and
+one Parquet file per table of sections 3.1 to 3.3, the level 2 tables in a sub-folder per mapping
+(`mappings/<label>/`), the journal in `journal.parquet`. A folder is easy to inspect and to keep under version control
+beside the decks; it is written to a temporary folder beside it, then renamed, so that a reader never sees half a
+layout. The **schema** (the files, the tables, their columns, their types, their meaning) is the contract with the
+consumers: it is versioned, documented, recorded in a `tests/schema_contract.json` checked by the tests, and a change of
+it increments the schema version (as the data contract of `nastran_rw`). A consumer may read the folder with pyarrow
+alone, without this package.
 
 ### 3.9 What the consumers read
 
@@ -284,7 +288,7 @@ layout.check(model, gfem)
 with layout.edit(author="jc") as edit:           # what the 3D editor calls
     edit.set_kind("M-0412", "longeron")
     edit.add_point(edge="M-0412/C40-C41", at=0.25)
-layout.save("fuselage.layout")
+layout.save("fuselage_layout/")                  # a folder: manifest.json and Parquet tables
 
 dfem_model = nr.Model.read("fuselage_dfem.bdf")
 dfem = layout.map(dfem_model, label="dfem")      # the same structure, another fidelity
@@ -337,7 +341,7 @@ pockets, 25 000 edges and 100 000 calculation points.
 |---|---|
 | Inference of a whole fuselage | under 1 min |
 | Building from tables, and mapping to a model | under 30 s |
-| Save and load of a layout file | under 3 s |
+| Save and load of a layout folder | under 3 s |
 | Complete check | under 20 s |
 | One edit operation and its local validation (the 3D editor) | under 100 ms |
 
@@ -345,7 +349,7 @@ pockets, 25 000 edges and 100 000 calculation points.
 
 | Folder | Content |
 |---|---|
-| `src/nastran_layout/` | `schema/` (the tables, their columns and types, the version), `structure/` (stations, surfaces, members, nodes, edges, pockets, groups: level 1), `mapping/` (roles, representations, level 2), `points/` (calculation points, recipes, adapters), `build/` (from tables), `infer/` (from the mesh, the rules), `check/`, `edit/` (operations, journal, replay), `io/` (the file, the tables), `errors.py`, `diagnostics.py` |
+| `src/nastran_layout/` | `schema/` (the tables, their columns and types, the version), `structure/` (stations, surfaces, members, nodes, edges, pockets, groups: level 1), `mapping/` (roles, representations, level 2), `points/` (calculation points, recipes, adapters), `build/` (from tables), `infer/` (from the mesh, the rules), `check/`, `edit/` (operations, journal, replay), `io/` (the layout folder, the tables in and out), `errors.py`, `diagnostics.py` |
 | `tests/` | one test module per module, each test under one second; small decks of a stiffened barrel and a wing box, in 1D, 2D and mixed fidelity |
 | `validation/` | the layouts of the validation decks, given as tables and inferred, compared |
 | `spec/`, `docs/`, `benchmarks/`, `scripts/` | the specification, the user and developer guides (the schema reference), the performance targets, the checks |
@@ -364,7 +368,7 @@ pockets, 25 000 edges and 100 000 calculation points.
 
 ## 8. Delivery plan
 
-1. The package skeleton (wheel, checks), the schema and its contract, the file format.
+1. The package skeleton (wheel, checks), the schema and its contract, the layout folder.
 2. Level 1 from tables: stations, surfaces, members, nodes, edges, pockets, groups, calculation points; the level 1
    checks.
 3. Level 2: the mapping of 1D, 2D and mixed members, the roles, the recipes and their adapters; the level 2 checks; the
@@ -392,10 +396,10 @@ Decided by the owner (2026-10-09):
 | Fidelity | A member is represented by 1D elements, shells, or both, per edge |
 | Calculation points | Explicit, attached to the entities, not to the stations; the stations are reference planes |
 | Editing | Atomic validated operations and a replayable journal; a 3D editor as another plugin |
+| Storage | One folder: a `manifest.json` and one Parquet file per table; pyarrow a dependency |
 
 Open points:
 
-- The file format (a zip of Parquet tables and a JSON manifest is proposed) and pyarrow as a hard dependency.
 - The default list of member kinds and segment roles, and the rules of the inference that come with the package.
 - The defaults of the calculation points per member kind, and the tolerance of the snap of the `2d` cuts.
 - The tolerances: the crossing of reference lines, a flat pocket, the comparison of the tables with the mesh.

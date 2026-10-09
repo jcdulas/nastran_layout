@@ -19,8 +19,8 @@ points at which the analyses read their loads. A pure Python package built on `n
 - **Edited through journalled operations.** Every change is validated and recorded; the journal gives undo and redo,
   and is replayed after a remesh so that the corrections are not lost. A 3D editor (another plugin) drives these
   operations.
-- **One versioned file.** A zip of Parquet tables and a JSON manifest, its schema a documented contract: the consumers
-  can read it with pyarrow alone.
+- **One versioned folder.** A JSON manifest and one Parquet table per entity, its schema a documented contract: the
+  consumers can read it with pyarrow alone.
 
 It is read by `nastran_ssa` (the analysis of stiffened structures: its items are the pockets and edges), `nastran_smear`
 (the smeared running loads of stiffened panels) and `nastran_lcs` (the zones and the items of the selection of the
@@ -39,7 +39,7 @@ draft.to_tables("layout_tables/")                # reviewed and corrected by the
 layout = nl.Layout.from_tables("layout_tables/", units="mm")
 gfem = layout.map(model, label="gfem")
 layout.check(model, gfem).to_dataframe()
-layout.save("fuselage.layout")
+layout.save("fuselage_layout/")
 ```
 
 ## Status
